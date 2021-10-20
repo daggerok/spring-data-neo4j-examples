@@ -1,0 +1,110 @@
+name: CI
+on:
+  workflow_dispatch:
+    inputs:
+      trigger:
+        description: Type something to triggre manual jobs
+        required: false
+        default: ''
+  push:
+    paths:
+      - '**/workflows/**'
+      - '**/src/**'
+      - '*pom.xml'
+jobs:
+  data-rest:
+    if: github.event.inputs.trigger == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        id: ci
+        with:
+          path: |
+            ~/.npm
+            ~/.node
+            ~/.local
+            ~/.gradle
+            ~/.docker
+            ~/.m2/repository
+            !~/.m2/repository/com/gituhb/daggerok
+          key: ${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+      - uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
+      - run: docker run --rm --name neo4j -d -p7474:7474 -p7687:7687 -eNEO4J_AUTH=neo4j/s3cr3t neo4j:4.3.6-community
+      - run: sudo apt install -y httpie
+      - run: ./mvnw -f data-rest clean test
+      - run: |
+          ./mvnw -f data-rest spring-boot:start
+          #
+          http --ignore-stdin get :8001/
+          http --ignore-stdin post :8001/author firstName=Maksim lastName=Kostromin
+          http --ignore-stdin get :8001/
+          http --ignore-stdin get ':8001/author/search/findAllByLastNameContainsIgnoreCaseOrderByAt?name=a'
+          http --ignore-stdin get ':8001/author/search/findAllByLastNameContainsIgnoreCaseOrderByAt?name=kos'
+          #
+          ./mvnw -f data-rest spring-boot:stop
+      - run: docker stop neo4j
+  reactive:
+    if: github.event.inputs.trigger == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        id: ci
+        with:
+          path: |
+            ~/.npm
+            ~/.node
+            ~/.local
+            ~/.gradle
+            ~/.docker
+            ~/.m2/repository
+            !~/.m2/repository/com/gituhb/daggerok
+          key: ${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+      - uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
+      - run: docker run --rm --name neo4j -d -p7474:7474 -p7687:7687 -eNEO4J_AUTH=neo4j/s3cr3t neo4j:4.3.6-community
+      - run: sudo apt install -y httpie
+      - run: ./mvnw -f reactive clean test
+      - run: |
+          ./mvnw -f reactive spring-boot:start
+          #
+          http --ignore-stdin get :8002/api/v1/author
+          http --ignore-stdin post :8002/api/v1/author firstName=Maksim lastName=Kostromin
+          http --ignore-stdin get :8002/api/v1/author
+          http --ignore-stdin get ':8002/api/v1/author/a'
+          http --ignore-stdin get ':8002/api/v1/author/kos'
+          #
+          ./mvnw -f reactive spring-boot:stop
+      - run: docker stop neo4j
+  dependency-updates:
+    if: github.event.inputs.trigger != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: |
+          echo "Trigger: ${{ github.event.inputs.trigger }}"
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        id: ci
+        with:
+          path: |
+            ~/.npm
+            ~/.node
+            ~/.local
+            ~/.gradle
+            ~/.docker
+            ~/.m2/repository
+            !~/.m2/repository/com/gituhb/daggerok
+          key: ${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+      - uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
+      - run: ./mvnw -f versions:display-parent-updates
+      - run: ./mvnw versions:display-plugin-updates
+      - run: ./mvnw versions:display-property-updates
